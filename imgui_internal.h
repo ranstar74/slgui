@@ -130,6 +130,7 @@ struct ImGuiInputTextDeactivateData;// Short term storage to backup text of a de
 struct ImGuiLastItemData;           // Status storage for last submitted items
 struct ImGuiLocEntry;               // A localization entry.
 struct ImGuiMenuColumns;            // Simple column measurement, currently used for MenuItem() only
+struct ImGuiMultiSelectState;       // Multi-selection state
 struct ImGuiNavItemData;            // Result of a gamepad/keyboard directional navigation move query result
 struct ImGuiNavTreeNodeData;        // Temporary storage for last TreeNode() being a Left arrow landing candidate.
 struct ImGuiMetricsConfig;          // Storage for ShowMetricsWindow() and DebugNodeXXX() functions
@@ -820,6 +821,7 @@ enum ImGuiItemFlags_
     // Controlled by widget code
     ImGuiItemFlags_Inputable                = 1 << 10, // false     // [WIP] Auto-activate input mode when tab focused. Currently only used and supported by a few items before it becomes a generic feature.
     ImGuiItemFlags_HasSelectionUserData     = 1 << 11, // false     // Set by SetNextItemSelectionUserData()
+    ImGuiItemFlags_IsMultiSelect            = 1 << 12, // false     // Set by SetNextItemSelectionUserData()
 };
 
 // Status flags for an already submitted item
@@ -1187,10 +1189,6 @@ struct ImGuiNextWindowData
     ImGuiNextWindowData()       { memset(this, 0, sizeof(*this)); }
     inline void ClearFlags()    { Flags = ImGuiNextWindowDataFlags_None; }
 };
-
-// Multi-Selection item index or identifier when using SetNextItemSelectionUserData()/BeginMultiSelect()
-// (Most users are likely to use this store an item INDEX but this may be used to store a POINTER as well.)
-typedef ImS64 ImGuiSelectionUserData;
 
 enum ImGuiNextItemDataFlags_
 {
@@ -1659,8 +1657,20 @@ struct ImGuiOldColumns
 // We always assume that -1 is an invalid value (which works for indices and pointers)
 #define ImGuiSelectionUserData_Invalid        ((ImGuiSelectionUserData)-1)
 
+#define IMGUI_HAS_MULTI_SELECT 1
 #ifdef IMGUI_HAS_MULTI_SELECT
-// <this is filled in 'range_select' branch>
+
+struct IMGUI_API ImGuiMultiSelectState
+{
+    ImGuiMultiSelectData    In;                     // The In requests are set and returned by BeginMultiSelect()
+    ImGuiMultiSelectData    Out;                    // The Out requests are finalized and returned by EndMultiSelect()
+    bool                    InRangeDstPassedBy;     // (Internal) set by the the item that match NavJustMovedToId when InRequestRangeSetNav is set.
+    bool                    InRequestSetRangeNav;   // (Internal) set by BeginMultiSelect() when using Shift+Navigation. Because scrolling may be affected we can't afford a frame of lag with Shift+Navigation.
+
+    ImGuiMultiSelectState() { Clear(); }
+    void Clear() { In.Clear(); Out.Clear(); InRangeDstPassedBy = InRequestSetRangeNav = false; }
+};
+
 #endif // #ifdef IMGUI_HAS_MULTI_SELECT
 
 //-----------------------------------------------------------------------------
@@ -2030,6 +2040,12 @@ struct ImGuiContext
     ImVec2                  NavWindowingAccumDeltaPos;
     ImVec2                  NavWindowingAccumDeltaSize;
 
+    // Range-Select/Multi-Select
+    ImGuiID                 MultiSelectScopeId;
+    ImGuiWindow*            MultiSelectScopeWindow;
+    ImGuiMultiSelectFlags   MultiSelectFlags;
+    ImGuiMultiSelectState   MultiSelectState;
+
     // Render
     float                   DimBgRatio;                         // 0.0..1.0 animation when fading in a dimming background (for modal window and CTRL+TAB list)
 
@@ -2267,6 +2283,10 @@ struct ImGuiContext
         NavWindowingTarget = NavWindowingTargetAnim = NavWindowingListWindow = NULL;
         NavWindowingTimer = NavWindowingHighlightAlpha = 0.0f;
         NavWindowingToggleLayer = false;
+
+        MultiSelectScopeId = 0;
+        MultiSelectScopeWindow = NULL;
+        MultiSelectFlags = 0;
 
         DimBgRatio = 0.0f;
 
@@ -3010,7 +3030,6 @@ namespace ImGui
     IMGUI_API ImVec2        CalcItemSize(ImVec2 size, float default_w, float default_h);
     IMGUI_API float         CalcWrapWidthForPos(const ImVec2& pos, float wrap_pos_x);
     IMGUI_API void          PushMultiItemsWidths(int components, float width_full);
-    IMGUI_API bool          IsItemToggledSelection();                                   // Was the last item selection toggled? (after Selectable(), TreeNode() etc. We only returns toggle _event_ in order to handle clipping correctly)
     IMGUI_API ImVec2        GetContentRegionMaxAbs();
     IMGUI_API void          ShrinkWidths(ImGuiShrinkWidthItem* items, int count, float width_excess);
 
@@ -3185,6 +3204,10 @@ namespace ImGui
     IMGUI_API int           TypingSelectFindNextSingleCharMatch(ImGuiTypingSelectRequest* req, int items_count, const char* (*get_item_name_func)(void*, int), void* user_data, int nav_item_idx);
     IMGUI_API int           TypingSelectFindBestLeadingMatch(ImGuiTypingSelectRequest* req, int items_count, const char* (*get_item_name_func)(void*, int), void* user_data);
 
+    // Multi-Select/Range-Select API
+    IMGUI_API void          MultiSelectItemHeader(ImGuiID id, bool* p_selected);
+    IMGUI_API void          MultiSelectItemFooter(ImGuiID id, bool* p_selected, bool* p_pressed);
+
     // Internal Columns API (this is not exposed because we will encourage transitioning to the Tables API)
     IMGUI_API void          SetWindowClipRectBeforeSetChannel(ImGuiWindow* window, const ImRect& clip_rect);
     IMGUI_API void          BeginColumns(const char* str_id, int count, ImGuiOldColumnFlags flags = 0); // setup number of columns. use an identifier to distinguish multiple column sets. close with EndColumns().
@@ -3326,7 +3349,6 @@ namespace ImGui
     IMGUI_API void          TreePushOverrideID(ImGuiID id);
     IMGUI_API void          TreeNodeSetOpen(ImGuiID id, bool open);
     IMGUI_API bool          TreeNodeUpdateNextOpen(ImGuiID id, ImGuiTreeNodeFlags flags);   // Return open state. Consume previous SetNextItemOpen() data, if any. May return true when logging.
-    IMGUI_API void          SetNextItemSelectionUserData(ImGuiSelectionUserData selection_user_data);
 
     // Template functions are instantiated in imgui_widgets.cpp for a finite number of types.
     // To use them externally (for custom widget) you may need an "extern template" statement in your code in order to link to existing instances and silence Clang warnings (see #2036).
