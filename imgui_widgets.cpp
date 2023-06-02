@@ -6962,8 +6962,10 @@ ImGuiMultiSelectIO* ImGui::BeginMultiSelect(ImGuiMultiSelectFlags flags)
 
     // FIXME-MULTISELECT: Set for the purpose of user calling RangeSrcPassedBy
     // FIXME-MULTISELECT: Index vs Pointers.
-    ms->BeginIO.RangeSrcItem = storage->RangeSrcItem;
-    ms->BeginIO.NavIdItem = storage->NavIdItem;
+    // We want EndIO's NavIdItem/NavIdSelected to match BeginIO's one, so the value never changes after EndMultiSelect()
+    ms->BeginIO.RangeSrcItem = ms->EndIO.RangeSrcItem = storage->RangeSrcItem;
+    ms->BeginIO.NavIdItem = ms->EndIO.NavIdItem = storage->NavIdItem;
+    ms->BeginIO.NavIdSelected = ms->EndIO.NavIdSelected = (storage->NavIdSelected == 1) ? true : false;
 
     if (!ms->IsFocused)
         return &ms->BeginIO; // This is cleared at this point.
@@ -7018,13 +7020,14 @@ ImGuiMultiSelectIO* ImGui::EndMultiSelect()
     {
         if (ms->BeginIO.RangeSrcReset || (ms->BeginIO.RangeSrcPassedBy == false && ms->BeginIO.RangeSrcItem != (void*)-1))
         {
-            IMGUI_DEBUG_LOG_SELECTION("[selection] EndMultiSelect: Reset RangeSrc.\n"); // Will set be to NavId.
+            IMGUI_DEBUG_LOG_SELECTION("[selection] EndMultiSelect: Reset RangeSrcItem.\n"); // Will set be to NavId.
             ms->Storage->RangeSrcItem = (void*)-1;
         }
         if (ms->NavIdPassedBy == false && ms->Storage->NavIdItem != (void*)-1)
         {
-            IMGUI_DEBUG_LOG_SELECTION("[selection] EndMultiSelect: Reset NavIdData.\n");
+            IMGUI_DEBUG_LOG_SELECTION("[selection] EndMultiSelect: Reset NavIdItem.\n");
             ms->Storage->NavIdItem = (void*)-1;
+            ms->Storage->NavIdSelected = -1;
         }
     }
 
@@ -7130,11 +7133,7 @@ void ImGui::MultiSelectItemFooter(ImGuiID id, bool* p_selected, bool* p_pressed)
     ImGuiMultiSelectTempData* ms = g.CurrentMultiSelect;
     ImGuiMultiSelectState* storage = ms->Storage;
     if (pressed)
-    {
         ms->IsFocused = true;
-        //if (storage->Id != ms->FocusScopeId)
-        //    storage->Init(ms->FocusScopeId);
-    }
     if (!ms->IsFocused)
         return;
 
@@ -7144,15 +7143,11 @@ void ImGui::MultiSelectItemFooter(ImGuiID id, bool* p_selected, bool* p_pressed)
     bool is_ctrl = (ms->KeyMods & ImGuiMod_Ctrl) != 0;
     bool is_shift = (ms->KeyMods & ImGuiMod_Shift) != 0;
 
-    if (g.NavId == id)
-        storage->NavIdItem = item_data;
     if (g.NavId == id && storage->RangeSrcItem == (void*)-1)
     {
         storage->RangeSrcItem = item_data;
         storage->RangeSelected = selected; // Will be updated at the end of this function anyway.
     }
-    if (storage->NavIdItem == item_data)
-        ms->NavIdPassedBy = true;
 
     // Auto-select as you navigate a list
     if (g.NavJustMovedToId == id)
@@ -7248,6 +7243,15 @@ void ImGui::MultiSelectItemFooter(ImGuiID id, bool* p_selected, bool* p_pressed)
         ms->EndIO.RangeSelected = selected;
     }
 
+    // Update/store the selection state of focused item
+    if (g.NavId == id)
+    {
+        storage->NavIdItem = item_data;
+        storage->NavIdSelected = selected ? 1 : 0;
+    }
+    if (storage->NavIdItem == item_data)
+        ms->NavIdPassedBy = true;
+
     *p_selected = selected;
     *p_pressed = pressed;
 }
@@ -7263,7 +7267,7 @@ void ImGui::DebugNodeMultiSelectState(ImGuiMultiSelectState* storage)
         return;
     Text("ID = 0x%08X", storage->ID);
     Text("RangeSrcItem = %p, RangeSelected = %d", storage->RangeSrcItem, storage->RangeSelected);
-    Text("NavIdItem = %p", storage->NavIdItem);
+    Text("NavIdData = %p, NavIdSelected = %d", storage->NavIdItem, storage->NavIdSelected);
     TreePop();
 #else
     IM_UNUSED(storage);
