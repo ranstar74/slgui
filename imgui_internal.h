@@ -1196,16 +1196,15 @@ enum ImGuiNextItemDataFlags_
     ImGuiNextItemDataFlags_None             = 0,
     ImGuiNextItemDataFlags_HasWidth         = 1 << 0,
     ImGuiNextItemDataFlags_HasOpen          = 1 << 1,
-    ImGuiNextItemDataFlags_HasSelectionData = 1 << 2,
 };
 
 struct ImGuiNextItemData
 {
     ImGuiNextItemDataFlags      Flags;
-    ImGuiItemFlags              ItemFlags;          // Currently only tested/used for ImGuiItemFlags_AllowOverlap.
+    ImGuiItemFlags              ItemFlags;          // Currently only tested/used for ImGuiItemFlags_AllowOverlap and ImGuiItemFlags_HasSelectionUserData.
     // Non-flags members are NOT cleared by ItemAdd() meaning they are still valid during NavProcessItem()
     float                       Width;              // Set by SetNextItemWidth()
-    ImGuiID                     FocusScopeId;       // Set by SetNextItemSelectionUserData() (!= 0 signify value has been set)
+    ImGuiID                     FocusScopeId;       // Set by SetNextItemSelectionUserData()
     ImGuiSelectionUserData      SelectionUserData;  // Set by SetNextItemSelectionUserData() (note that NULL/0 is a valid value, we use -1 == ImGuiSelectionUserData_Invalid to mark invalid values)
     ImGuiCond                   OpenCond;
     bool                        OpenVal;            // Set by SetNextItemOpen()
