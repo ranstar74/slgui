@@ -6931,7 +6931,7 @@ static void DebugLogMultiSelectRequests(const char* function, const ImGuiMultiSe
     ImGuiContext& g = *GImGui;
     if (data->RequestClear)     IMGUI_DEBUG_LOG_SELECTION("[selection] %s: RequestClear\n", function);
     if (data->RequestSelectAll) IMGUI_DEBUG_LOG_SELECTION("[selection] %s: RequestSelectAll\n", function);
-    if (data->RequestSetRange)  IMGUI_DEBUG_LOG_SELECTION("[selection] %s: RequestSetRange %" IM_PRId64 "..%" IM_PRId64 " (0x%" IM_PRIX64 "..0x%" IM_PRIX64 ") = %d (dir %+d)\n", function, data->RangeSrcItem, data->RangeDstItem, data->RangeSrcItem, data->RangeDstItem, data->RangeSelected, data->RangeDirection);
+    if (data->RequestSetRange)  IMGUI_DEBUG_LOG_SELECTION("[selection] %s: RequestSetRange %" IM_PRId64 "..%" IM_PRId64 " (0x%" IM_PRIX64 "..0x%" IM_PRIX64 ") = %d\n", function, data->RangeFirstItem, data->RangeLastItem, data->RangeFirstItem, data->RangeLastItem, data->RangeSelected);
 }
 
 // Return ImGuiMultiSelectIO structure. Lifetime: valid until corresponding call to EndMultiSelect().
@@ -6961,7 +6961,6 @@ ImGuiMultiSelectIO* ImGui::BeginMultiSelect(ImGuiMultiSelectFlags flags)
     storage->Window = window;
     ms->Storage = storage;
 
-    // FIXME-MULTISELECT: Index vs Pointers.
     // We want EndIO's NavIdItem/NavIdSelected to match BeginIO's one, so the value never changes after EndMultiSelect()
     ms->BeginIO.RangeSrcItem = ms->EndIO.RangeSrcItem = storage->RangeSrcItem;
     ms->BeginIO.NavIdItem = ms->EndIO.NavIdItem = storage->NavIdItem;
@@ -7200,8 +7199,8 @@ void ImGui::MultiSelectItemFooter(ImGuiID id, bool* p_selected, bool* p_pressed)
         //----------------------------------------------------------------------------------------
 
         ImGuiInputSource input_source = (g.NavJustMovedToId == id || g.NavActivateId == id) ? g.NavInputSource : ImGuiInputSource_Mouse;
+        int range_direction;
         ms->EndIO.RequestSetRange = true;
-        ms->EndIO.RangeDstItem = item_data;
         if (is_shift && is_multiselect)
         {
             // Shift+Arrow always select
@@ -7209,7 +7208,7 @@ void ImGui::MultiSelectItemFooter(ImGuiID id, bool* p_selected, bool* p_pressed)
             //IM_ASSERT(storage->HasRangeSrc && storage->HasRangeValue);
             ms->EndIO.RangeSrcItem = (storage->RangeSrcItem != ImGuiSelectionUserData_Invalid) ? storage->RangeSrcItem : item_data;
             ms->EndIO.RangeSelected = (is_ctrl && storage->RangeSelected != -1) ? (storage->RangeSelected != 0) : true;
-            ms->EndIO.RangeDirection = ms->BeginIO.RangeSrcPassedBy ? +1 : -1;
+            range_direction = ms->BeginIO.RangeSrcPassedBy ? +1 : -1;
         }
         else
         {
@@ -7217,8 +7216,11 @@ void ImGui::MultiSelectItemFooter(ImGuiID id, bool* p_selected, bool* p_pressed)
             selected = is_ctrl ? !selected : true;
             ms->EndIO.RangeSrcItem = storage->RangeSrcItem = item_data;
             ms->EndIO.RangeSelected = selected;
-            ms->EndIO.RangeDirection = +1;
+            range_direction = +1;
         }
+        ImGuiSelectionUserData range_dst_item = item_data;
+        ms->EndIO.RangeFirstItem = (range_direction > 0) ? ms->EndIO.RangeSrcItem : range_dst_item;
+        ms->EndIO.RangeLastItem = (range_direction > 0) ? range_dst_item : ms->EndIO.RangeSrcItem;
 
         if (!is_multiselect)
         {
