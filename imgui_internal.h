@@ -1668,6 +1668,8 @@ struct IMGUI_API ImGuiMultiSelectTempData
     ImGuiMultiSelectState*  Storage;
     ImGuiID                 FocusScopeId;       // Copied from g.CurrentFocusScopeId (unless another selection scope was pushed manually)
     ImGuiMultiSelectFlags   Flags;
+    ImVec2                  ScopeRectMin;
+    ImVec2                  BackupCursorMaxPos;
     ImGuiKeyChord           KeyMods;
     bool                    LoopRequestClear;
     bool                    LoopRequestSelectAll;
@@ -1677,7 +1679,6 @@ struct IMGUI_API ImGuiMultiSelectTempData
     bool                    NavIdPassedBy;
     bool                    RangeSrcPassedBy;   // Set by the item that matches RangeSrcItem.
     bool                    RangeDstPassedBy;   // Set by the item that matches NavJustMovedToId when IsSetRange is set.
-    //ImRect                Rect;               // Extent of selection scope between BeginMultiSelect() / EndMultiSelect(), used by ImGuiMultiSelectFlags_ClearOnClickRectVoid.
 
     ImGuiMultiSelectTempData()  { Clear(); }
     void Clear()            { size_t io_sz = sizeof(IO); IO.Clear(); memset((void*)(&IO + 1), 0, sizeof(*this) - io_sz); } // Zero-clear except IO
