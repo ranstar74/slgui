@@ -2693,6 +2693,18 @@ static const char* ExampleNames[] =
     "Cauliflower", "Celery", "Celery Root", "Celcuce", "Chayote", "Chinese Broccoli", "Corn", "Cucumber"
 };
 
+// [Advanced] Helper class to store multi-selection state, used by the BeginMultiSelect() demos.
+// Provide an abstraction layer for the purpose of the demo showcasing different forms of underlying selection data.
+// To store a single-selection:
+// - You only need a single variable and don't need any of this!
+// To store a multi-selection, in your real application you could:
+// - A) Use external storage: e.g. std::set<MyObjectId>, std::vector<MyObjectId>, std::set<index>, interval trees, etc.
+//   are generally appropriate. Even a large array of bool might work for you...
+//   This code here use ImGuiStorage (a simple key->value storage) as a std::set replacement to avoid external dependencies.
+// - B) Or use intrusively stored selection (e.g. 'bool IsSelected' inside your object).
+//   - That means you cannot have multiple simultaneous views over your objects.
+//   - Some of our features requires you to provide the selection _size_, which with this specific strategy require additional work.
+//   - So we suggest using intrusive selection for multi-select is not really adequate.
 // Our multi-selection system doesn't make assumption about:
 // - how you want to identify items in multi-selection API?     Indices(*) / Custom Identifiers    / Pointers ?
 // - how you want to store persistent selection data?           Indices    / Custom Identifiers(*) / Pointers ?
@@ -2700,44 +2712,28 @@ static const char* ExampleNames[] =
 // In this demo we:
 // - always use indices in the multi-selection API (passed to SetNextItemSelectionUserData(), retrieved in ImGuiMultiSelectIO)
 // - use a little extra indirection layer in order to abstract how persistent selection data is derived from an index.
-//   - in some cases we use Index as custom identifier, in some cases we read from some custom item data structure.
+//   - in some cases we use Index as custom identifier
+//   - in some cases we read an ID from some custom item data structure (this is closer to what you would do in your codebase)
 // Many combinations are possible depending on how you prefer to store your items and how you prefer to store your selection.
-// WHEN YOUR APPLICATION SETTLES ON A CHOICE, YOU WILL PROBABLY PREFER TO GET RID OF THIS UNNECESSARY 'ExampleSelectionAdapter' INDIRECTION LOGIC.
-// In theory, for maximum abstraction, this class could contains IndexToUserData() and UserDataToIndex() functions,
+// WHEN YOUR APPLICATION SETTLES ON A CHOICE, YOU WILL PROBABLY PREFER TO GET RID OF THE UNNECESSARY 'AdapterIndexToStorageId()' INDIRECTION LOGIC.
+// In theory, for maximum abstraction, this class could contains AdapterIndexToUserData() and AdapterUserDataToIndex() functions as well,
 // but because we always use indices in SetNextItemSelectionUserData() in the demo, we omit that for clarify.
-struct ExampleSelectionAdapter
-{
-    void*   Data = NULL;
-    ImGuiID (*IndexToStorage)(ExampleSelectionAdapter* self, int idx);  // Function to convert item index to data stored in persistent selection
-
-    ExampleSelectionAdapter()    { SetupForDirectIndexes(); }
-
-    // Example for the simplest case: Index==SelectionStorage (this adapter doesn't even need to use the item data field)
-    void SetupForDirectIndexes() { IndexToStorage = [](ExampleSelectionAdapter*, int idx) { return (ImGuiID)idx; }; }
-};
-
-// [Advanced] Helper class to store multi-selection state, used by the BeginMultiSelect() demos.
-// Provide an abstraction layer for the purpose of the demo showcasing different forms of underlying selection data.
-// To store a single-selection:
-// - You only need a single variable and don't need any of this!
-// To store a multi-selection, in your real application you could:
-// - A) Use external storage: e.g. std::set<index>, std::set<MyObjectId>, std::vector<MyObjectId>, interval trees, etc.
-//   are generally appropriate. Even a large array of bool might work for you...
-//   This code here use ImGuiStorage (a simple key->value storage) as a std::set replacement to avoid external dependencies.
-// - B) Or use intrusively stored selection (e.g. 'bool IsSelected' inside your object).
-//   - It is simple, but it means you cannot have multiple simultaneous views over your objects.
-//   - Some of our features requires you to provide the selection _size_, which with this specific strategy require additional work:
-//     either you maintain it (which requires storage outside of objects) either you recompute (which may be costly for large sets).
-//   - So we suggest using intrusive selection for multi-select is not really adequate.
 struct ExampleSelection
 {
     // Data
-    ImGuiStorage                        Storage;        // Selection set
+    ImGuiStorage                        Storage;        // Selection set (think of this as similar to e.g. std::set<ImGuiID>)
     int                                 Size;           // Number of selected items (== number of 1 in the Storage, maintained by this class).
     bool                                QueueDeletion;  // Request deleting selected items
 
+    // Adapter to convert item index to item identifier
+    // e.g.
+    //   selection.AdapterData = (void*)my_items;
+    //   selection.AdapterIndexToStorageId = [](ExampleSelection* s, int idx) { return ((MyItems**)s->AdapterData)[idx]->ID; };
+    void*                               AdapterData;
+    ImGuiID                             (*AdapterIndexToStorageId)(ExampleSelection* self, int idx);
+
     // Functions
-    ExampleSelection()                  { Clear(); }
+    ExampleSelection()                  { Clear(); AdapterData = NULL; AdapterIndexToStorageId = [](ExampleSelection*, int idx) { return (ImGuiID)idx; };}
     void Clear()                        { Storage.Data.resize(0); Size = 0; QueueDeletion = false; }
     void Swap(ExampleSelection& rhs)    { Storage.Data.swap(rhs.Storage.Data); }
     bool Contains(ImGuiID key) const    { return Storage.GetInt(key, 0) != 0; }
@@ -2748,8 +2744,8 @@ struct ExampleSelection
     void DebugTooltip()                 { if (ImGui::BeginTooltip()) { for (auto& pair : Storage.Data) if (pair.val_i) ImGui::Text("0x%03X (%d)", pair.key, pair.key); ImGui::EndTooltip(); } }
 
     // Apply requests coming from BeginMultiSelect() and EndMultiSelect().
-    // - Must be done in this order! Clear->SelectAll->SetRange. Enable 'Demo->Tools->Debug Log->Selection' to see selection requests as they happen.
-    // - Honoring RequestSetRange requires that you can iterate/interpolate between RangeFirstItem and RangeLastItem.
+    // - Enable 'Demo->Tools->Debug Log->Selection' to see selection requests as they happen.
+    // - Honoring SetRange requests requires that you can iterate/interpolate between RangeFirstItem and RangeLastItem.
     //   - In this demo we often submit indices to SetNextItemSelectionUserData() + store the same indices in persistent selection.
     //   - Your code may do differently. If you store pointers or objects ID in ImGuiSelectionUserData you may need to perform
     //     a lookup in order to have some way to iterate/interpolate between two items.
@@ -2764,34 +2760,34 @@ struct ExampleSelection
     //      if (req.Type == ImGuiSelectionRequestType_SelectAll) { Clear(); for (int n = 0; n < items_count; n++) { AddItem(n); } }
     //      if (req.Type == ImGuiSelectionRequestType_SetRange)  { for (int n = (int)ms_io->RangeFirstItem; n <= (int)ms_io->RangeLastItem; n++) { UpdateItem(n, ms_io->RangeSelected); } }
     //   }
-    void ApplyRequests(ImGuiMultiSelectIO* ms_io, ExampleSelectionAdapter* adapter, int items_count)
+    void ApplyRequests(ImGuiMultiSelectIO* ms_io, int items_count)
     {
-        IM_ASSERT(adapter->IndexToStorage != NULL);
+        IM_ASSERT(AdapterIndexToStorageId != NULL);
         for (ImGuiSelectionRequest& req : ms_io->Requests)
         {
-            if (req.Type == ImGuiSelectionRequestType_Clear || req.Type == ImGuiSelectionRequestType_SelectAll)
+            if (req.Type == ImGuiSelectionRequestType_Clear)
                 Clear();
             if (req.Type == ImGuiSelectionRequestType_SelectAll)
             {
+                Storage.Data.resize(0);
                 Storage.Data.reserve(items_count);
                 for (int idx = 0; idx < items_count; idx++)
-                    AddItem(adapter->IndexToStorage(adapter, idx));
+                    AddItem(AdapterIndexToStorageId(this, idx));
             }
             if (req.Type == ImGuiSelectionRequestType_SetRange)
                 for (int idx = (int)req.RangeFirstItem; idx <= (int)req.RangeLastItem; idx++)
-                    UpdateItem(adapter->IndexToStorage(adapter, idx), req.RangeSelected);
+                    UpdateItem(AdapterIndexToStorageId(this, idx), req.RangeSelected);
         }
     }
 
     // Find which item should be Focused after deletion.
-    // We output an index in the before-deletion-items list, that user will call SetKeyboardFocusHere() on.
+    // Call _before_ item submission. Retunr an index in the before-deletion item list, your item loop should call SetKeyboardFocusHere() on it.
     // The subsequent ApplyDeletionPostLoop() code will use it to apply Selection.
     // - We cannot provide this logic in core Dear ImGui because we don't have access to selection data.
     // - We don't actually manipulate the ImVector<> here, only in ApplyDeletionPostLoop(), but using similar API for consistency and flexibility.
     // - Important: Deletion only works if the underlying ImGuiID for your items are stable: aka not depend on their index, but on e.g. item id/ptr.
     // FIXME-MULTISELECT: Doesn't take account of the possibility focus target will be moved during deletion. Need refocus or offset.
-    template<typename ITEM_TYPE>
-    int ApplyDeletionPreLoop(ImGuiMultiSelectIO* ms_io, ExampleSelectionAdapter* adapter, ImVector<ITEM_TYPE>& items)
+    int ApplyDeletionPreLoop(ImGuiMultiSelectIO* ms_io, int items_count)
     {
         QueueDeletion = false;
 
@@ -2804,13 +2800,13 @@ struct ExampleSelection
         }
 
         // If focused item is selected: land on first unselected item after focused item.
-        for (int idx = focused_idx + 1; idx < items.Size; idx++)
-            if (!Contains(adapter->IndexToStorage(adapter, idx)))
+        for (int idx = focused_idx + 1; idx < items_count; idx++)
+            if (!Contains(AdapterIndexToStorageId(this, idx)))
                 return idx;
 
         // If focused item is selected: otherwise return last unselected item before focused item.
-        for (int idx = IM_MIN(focused_idx, items.Size) - 1; idx >= 0; idx--)
-            if (!Contains(adapter->IndexToStorage(adapter, idx)))
+        for (int idx = IM_MIN(focused_idx, items_count) - 1; idx >= 0; idx--)
+            if (!Contains(AdapterIndexToStorageId(this, idx)))
                 return idx;
 
         return -1;
@@ -2820,7 +2816,7 @@ struct ExampleSelection
     // - Call after EndMultiSelect()
     // - We cannot provide this logic in core Dear ImGui because we don't have access to your items, nor to selection data.
     template<typename ITEM_TYPE>
-    void ApplyDeletionPostLoop(ImGuiMultiSelectIO* ms_io, ExampleSelectionAdapter* adapter, ImVector<ITEM_TYPE>& items, int item_curr_idx_to_select)
+    void ApplyDeletionPostLoop(ImGuiMultiSelectIO* ms_io, ImVector<ITEM_TYPE>& items, int item_curr_idx_to_select)
     {
         // Rewrite item list (delete items) + convert old selection index (before deletion) to new selection index (after selection).
         // If NavId was not part of selection, we will stay on same item.
@@ -2829,7 +2825,7 @@ struct ExampleSelection
         int item_next_idx_to_select = -1;
         for (int idx = 0; idx < items.Size; idx++)
         {
-            if (!Contains(adapter->IndexToStorage(adapter, idx)))
+            if (!Contains(AdapterIndexToStorageId(this, idx)))
                 new_items.push_back(items[idx]);
             if (item_curr_idx_to_select == idx)
                 item_next_idx_to_select = new_items.Size - 1;
@@ -2839,7 +2835,7 @@ struct ExampleSelection
         // Update selection
         Clear();
         if (item_next_idx_to_select != -1 && ms_io->NavIdSelected)
-            AddItem(adapter->IndexToStorage(adapter, item_next_idx_to_select));
+            AddItem(AdapterIndexToStorageId(this, item_next_idx_to_select));
     }
 };
 
@@ -2879,10 +2875,9 @@ struct ExampleDualListBox
     void ApplySelectionRequests(ImGuiMultiSelectIO* ms_io, int side)
     {
         // In this example we store item id in selection (instead of item index)
-        ExampleSelectionAdapter adapter;
-        adapter.Data = Items[side].Data;
-        adapter.IndexToStorage = [](ExampleSelectionAdapter* self, int idx) { return (ImGuiID)((ImGuiID*)self->Data)[idx]; };
-        Selections[side].ApplyRequests(ms_io, &adapter, Items[side].Size);
+        Selections[side].AdapterData = Items[side].Data;
+        Selections[side].AdapterIndexToStorageId = [](ExampleSelection* self, int idx) { ImGuiID* items = (ImGuiID*)self->AdapterData; return items[idx]; };
+        Selections[side].ApplyRequests(ms_io, Items[side].Size);
     }
     static int IMGUI_CDECL CompareItemsByValue(const void* lhs, const void* rhs)
     {
@@ -3031,8 +3026,8 @@ static void ShowDemoWindowMultiSelect()
         IMGUI_DEMO_MARKER("Widgets/Selection State/Multi-Select");
         if (ImGui::TreeNode("Multi-Select"))
         {
+            // Use default selection.Adapter: Pass index to SetNextItemSelectionUserData(), store index in Selection
             static ExampleSelection selection;
-            ExampleSelectionAdapter selection_adapter; // Use default: Pass index to SetNextItemSelectionUserData(), store index in Selection
 
             ImGui::Text("Tips: Use 'Debug Log->Selection' to see selection requests as they happen.");
 
@@ -3049,7 +3044,7 @@ static void ShowDemoWindowMultiSelect()
             {
                 ImGuiMultiSelectFlags flags = ImGuiMultiSelectFlags_ClearOnEscape;
                 ImGuiMultiSelectIO* ms_io = ImGui::BeginMultiSelect(flags);
-                selection.ApplyRequests(ms_io, &selection_adapter, ITEMS_COUNT);
+                selection.ApplyRequests(ms_io, ITEMS_COUNT);
 
                 for (int n = 0; n < ITEMS_COUNT; n++)
                 {
@@ -3061,7 +3056,7 @@ static void ShowDemoWindowMultiSelect()
                 }
 
                 ms_io = ImGui::EndMultiSelect();
-                selection.ApplyRequests(ms_io, &selection_adapter, ITEMS_COUNT);
+                selection.ApplyRequests(ms_io, ITEMS_COUNT);
 
                 ImGui::EndListBox();
             }
@@ -3072,8 +3067,8 @@ static void ShowDemoWindowMultiSelect()
         IMGUI_DEMO_MARKER("Widgets/Selection State/Multi-Select (with clipper)");
         if (ImGui::TreeNode("Multi-Select (with clipper)"))
         {
+            // Use default selection.Adapter: Pass index to SetNextItemSelectionUserData(), store index in Selection
             static ExampleSelection selection;
-            ExampleSelectionAdapter selection_adapter; // Use default: Pass index to SetNextItemSelectionUserData(), store index in Selection
 
             ImGui::Text("Added features:");
             ImGui::BulletText("Using ImGuiListClipper.");
@@ -3084,7 +3079,7 @@ static void ShowDemoWindowMultiSelect()
             {
                 ImGuiMultiSelectFlags flags = ImGuiMultiSelectFlags_ClearOnEscape;
                 ImGuiMultiSelectIO* ms_io = ImGui::BeginMultiSelect(flags);
-                selection.ApplyRequests(ms_io, &selection_adapter, ITEMS_COUNT);
+                selection.ApplyRequests(ms_io, ITEMS_COUNT);
 
                 ImGuiListClipper clipper;
                 clipper.Begin(ITEMS_COUNT);
@@ -3103,7 +3098,7 @@ static void ShowDemoWindowMultiSelect()
                 }
 
                 ms_io = ImGui::EndMultiSelect();
-                selection.ApplyRequests(ms_io, &selection_adapter, ITEMS_COUNT);
+                selection.ApplyRequests(ms_io, ITEMS_COUNT);
 
                 ImGui::EndListBox();
             }
@@ -3123,9 +3118,9 @@ static void ShowDemoWindowMultiSelect()
         {
             // Intentionally separating items data from selection data!
             // But you may decide to store selection data inside your item (aka intrusive storage).
+            // Use default selection.Adapter: Pass index to SetNextItemSelectionUserData(), store index in Selection
             static ImVector<int> items;
             static ExampleSelection selection;
-            ExampleSelectionAdapter selection_adapter; // Use default: Pass index to SetNextItemSelectionUserData(), store index in Selection
 
             ImGui::Text("Adding features:");
             ImGui::BulletText("Dynamic list with Delete key support.");
@@ -3150,7 +3145,7 @@ static void ShowDemoWindowMultiSelect()
             {
                 ImGuiMultiSelectFlags flags = ImGuiMultiSelectFlags_ClearOnEscape;
                 ImGuiMultiSelectIO* ms_io = ImGui::BeginMultiSelect(flags);
-                selection.ApplyRequests(ms_io, &selection_adapter, items.Size);
+                selection.ApplyRequests(ms_io, items.Size);
 
                 // FIXME-MULTISELECT: Shortcut(). Hard to demo this? May be helpful to send a helper/optional "delete" signal.
                 // FIXME-MULTISELECT: may turn into 'ms_io->RequestDelete' -> need HasSelection passed.
@@ -3158,7 +3153,7 @@ static void ShowDemoWindowMultiSelect()
                 const bool want_delete = selection.QueueDeletion || ((selection.GetSize() > 0) && ImGui::IsWindowFocused() && ImGui::IsKeyPressed(ImGuiKey_Delete));
                 int item_curr_idx_to_focus = -1;
                 if (want_delete)
-                    item_curr_idx_to_focus = selection.ApplyDeletionPreLoop(ms_io, &selection_adapter, items);
+                    item_curr_idx_to_focus = selection.ApplyDeletionPreLoop(ms_io, items.Size);
 
                 for (int n = 0; n < items.Size; n++)
                 {
@@ -3175,9 +3170,9 @@ static void ShowDemoWindowMultiSelect()
 
                 // Apply multi-select requests
                 ms_io = ImGui::EndMultiSelect();
-                selection.ApplyRequests(ms_io, &selection_adapter, items.Size);
+                selection.ApplyRequests(ms_io, items.Size);
                 if (want_delete)
-                    selection.ApplyDeletionPostLoop(ms_io, &selection_adapter, items, item_curr_idx_to_focus);
+                    selection.ApplyDeletionPostLoop(ms_io, items, item_curr_idx_to_focus);
 
                 ImGui::EndListBox();
             }
@@ -3204,10 +3199,10 @@ static void ShowDemoWindowMultiSelect()
         IMGUI_DEMO_MARKER("Widgets/Selection State/Multi-Select (multiple scopes)");
         if (ImGui::TreeNode("Multi-Select (multiple scopes)"))
         {
+            // Use default select: Pass index to SetNextItemSelectionUserData(), store index in Selection
             const int SCOPES_COUNT = 3;
             const int ITEMS_COUNT = 8; // Per scope
             static ExampleSelection selections_data[SCOPES_COUNT];
-            ExampleSelectionAdapter selection_adapter; // Use default: Pass index to SetNextItemSelectionUserData(), store index in Selection
 
             // Use ImGuiMultiSelectFlags_ScopeRect to not affect other selections in same window.
             static ImGuiMultiSelectFlags flags = ImGuiMultiSelectFlags_ScopeRect | ImGuiMultiSelectFlags_ClearOnEscape;// | ImGuiMultiSelectFlags_ClearOnClickVoid;
@@ -3222,7 +3217,7 @@ static void ShowDemoWindowMultiSelect()
                 ImGui::PushID(selection_scope_n);
                 ExampleSelection* selection = &selections_data[selection_scope_n];
                 ImGuiMultiSelectIO* ms_io = ImGui::BeginMultiSelect(flags);
-                selection->ApplyRequests(ms_io, &selection_adapter, ITEMS_COUNT);
+                selection->ApplyRequests(ms_io, ITEMS_COUNT);
 
                 ImGui::SeparatorText("Selection scope");
                 ImGui::Text("Selection size: %d/%d", selection->GetSize(), ITEMS_COUNT);
@@ -3238,7 +3233,7 @@ static void ShowDemoWindowMultiSelect()
 
                 // Apply multi-select requests
                 ms_io = ImGui::EndMultiSelect();
-                selection->ApplyRequests(ms_io, &selection_adapter, ITEMS_COUNT);
+                selection->ApplyRequests(ms_io, ITEMS_COUNT);
                 ImGui::PopID();
             }
             ImGui::TreePop();
@@ -3296,11 +3291,11 @@ static void ShowDemoWindowMultiSelect()
             ImGui::SameLine(); HelpMarker("Allow dragging an unselected item without altering selection.");
 
             // Initialize default list with 1000 items.
+            // Use default selection.Adapter: Pass index to SetNextItemSelectionUserData(), store index in Selection
             static ImVector<int> items;
             static int items_next_id = 0;
             if (items_next_id == 0) { for (int n = 0; n < 1000; n++) { items.push_back(items_next_id++); } }
             static ExampleSelection selection;
-            ExampleSelectionAdapter selection_adapter; // Use default: Pass index to SetNextItemSelectionUserData(), store index in Selection
 
             ImGui::Text("Selection size: %d/%d", selection.GetSize(), items.Size);
 
@@ -3313,14 +3308,14 @@ static void ShowDemoWindowMultiSelect()
                     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ImGui::GetStyle().ItemSpacing.x, 0.0f));
 
                 ImGuiMultiSelectIO* ms_io = ImGui::BeginMultiSelect(flags);
-                selection.ApplyRequests(ms_io, &selection_adapter, items.Size);
+                selection.ApplyRequests(ms_io, items.Size);
 
                 // FIXME-MULTISELECT: Shortcut(). Hard to demo this? May be helpful to send a helper/optional "delete" signal.
                 // FIXME-MULTISELECT: may turn into 'ms_io->RequestDelete' -> need HasSelection passed.
                 const bool want_delete = selection.QueueDeletion || ((selection.GetSize() > 0) && ImGui::IsWindowFocused() && ImGui::IsKeyPressed(ImGuiKey_Delete));
                 int item_curr_idx_to_focus = -1;
                 if (want_delete)
-                    item_curr_idx_to_focus = selection.ApplyDeletionPreLoop(ms_io, &selection_adapter, items);
+                    item_curr_idx_to_focus = selection.ApplyDeletionPreLoop(ms_io, items.Size);
 
                 if (show_in_table)
                 {
@@ -3459,9 +3454,9 @@ static void ShowDemoWindowMultiSelect()
 
                 // Apply multi-select requests
                 ms_io = ImGui::EndMultiSelect();
-                selection.ApplyRequests(ms_io, &selection_adapter, items.Size);
+                selection.ApplyRequests(ms_io, items.Size);
                 if (want_delete)
-                    selection.ApplyDeletionPostLoop(ms_io, &selection_adapter, items, item_curr_idx_to_focus);
+                    selection.ApplyDeletionPostLoop(ms_io, items, item_curr_idx_to_focus);
 
                 if (widget_type == WidgetType_TreeNode)
                     ImGui::PopStyleVar();
@@ -9229,10 +9224,10 @@ void ShowExampleAppDocuments(bool* p_open)
 
 struct ExampleAsset
 {
-    int     ID;
+    ImGuiID ID;
     int     Type;
 
-    ExampleAsset(int id, int type) { ID = id; Type = type; }
+    ExampleAsset(ImGuiID id, int type) { ID = id; Type = type; }
 
     static const ImGuiTableSortSpecs* s_current_sort_specs;
 
@@ -9254,7 +9249,7 @@ struct ExampleAsset
             const ImGuiTableColumnSortSpecs* sort_spec = &s_current_sort_specs->Specs[n];
             int delta = 0;
             if (sort_spec->ColumnIndex == 0)
-                delta = (a->ID - b->ID);
+                delta = ((int)a->ID - (int)b->ID);
             else if (sort_spec->ColumnIndex == 1)
                 delta = (a->Type - b->Type);
             if (delta > 0)
@@ -9262,7 +9257,7 @@ struct ExampleAsset
             if (delta < 0)
                 return (sort_spec->SortDirection == ImGuiSortDirection_Ascending) ? -1 : +1;
         }
-        return (a->ID - b->ID);
+        return ((int)a->ID - (int)b->ID);
     }
 };
 const ImGuiTableSortSpecs* ExampleAsset::s_current_sort_specs = NULL;
@@ -9280,7 +9275,7 @@ struct ExampleAssetsBrowser
     // State
     ImVector<ExampleAsset>  Items;
     ExampleSelection        Selection;
-    int                     NextItemId = 0;
+    ImGuiID                 NextItemId = 0;
     bool                    SortDirty = false;
     float                   ZoomWheelAccum = 0.0f;
 
@@ -9409,12 +9404,12 @@ struct ExampleAssetsBrowser
             ImGuiMultiSelectFlags ms_flags = ImGuiMultiSelectFlags_ClearOnEscape | ImGuiMultiSelectFlags_ClearOnClickVoid;
             if (AllowDragUnselected)
                 ms_flags |= ImGuiMultiSelectFlags_SelectOnClickRelease; // To allow dragging an unselected item without altering selection.
-
             ImGuiMultiSelectIO* ms_io = ImGui::BeginMultiSelect(ms_flags);
-            ExampleSelectionAdapter selection_adapter;
-            selection_adapter.Data = this;
-            selection_adapter.IndexToStorage = [](ExampleSelectionAdapter* self_, int idx) { ExampleAssetsBrowser* self = (ExampleAssetsBrowser*)self_->Data; return (ImGuiID)self->Items[idx].ID; };
-            Selection.ApplyRequests(ms_io, &selection_adapter, Items.Size);
+
+            // Use custom selection adapter: store ID in selection (recommended)
+            Selection.AdapterData = this;
+            Selection.AdapterIndexToStorageId = [](ExampleSelection* self_, int idx) { ExampleAssetsBrowser* self = (ExampleAssetsBrowser*)self_->AdapterData; return self->Items[idx].ID; };
+            Selection.ApplyRequests(ms_io, Items.Size);
 
             // Altering ItemSpacing may seem unnecessary as we position every items using SetCursorScreenPos()...
             // But it is necessary for two reasons:
@@ -9443,7 +9438,7 @@ struct ExampleAssetsBrowser
                     for (int item_idx = item_min_idx_for_current_line; item_idx < item_max_idx_for_current_line; ++item_idx)
                     {
                         ExampleAsset* item_data = &Items[item_idx];
-                        ImGui::PushID(item_data->ID);
+                        ImGui::PushID((int)item_data->ID);
 
                         // Position item
                         ImVec2 pos = ImVec2(start_pos.x + (item_idx % column_count) * (item_size.x + item_spacing), start_pos.y + (line_idx * line_height));
@@ -9508,7 +9503,7 @@ struct ExampleAssetsBrowser
             ImGui::PopStyleVar(); // ImGuiStyleVar_ItemSpacing
 
             ms_io = ImGui::EndMultiSelect();
-            Selection.ApplyRequests(ms_io, &selection_adapter, Items.Size);
+            Selection.ApplyRequests(ms_io, Items.Size);
 
             // FIXME-MULTISELECT: Find a way to expose this in public API. This currently requires "imgui_internal.h"
             //ImGui::NavMoveRequestTryWrapping(ImGui::GetCurrentWindow(), ImGuiNavMoveFlags_WrapX);
