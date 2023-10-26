@@ -2124,8 +2124,9 @@ struct ImGuiContext
     ImVector<ImGuiShrinkWidthItem>  ShrinkWidthBuffer;
 
     // Multi-Select state
-    ImGuiMultiSelectTempData*       CurrentMultiSelect;         // FIXME-MULTISELECT: We currently don't support recursing/stacking multi-select
-    ImGuiMultiSelectTempData        MultiSelectTempData[1];
+    ImGuiMultiSelectTempData*       CurrentMultiSelect;
+    int                             MultiSelectTempDataStacked; // Temporary multi-select data size (because we leave previous instances undestructed, we generally don't use MultiSelectTempData.Size)
+    ImVector<ImGuiMultiSelectTempData> MultiSelectTempData;
     ImPool<ImGuiMultiSelectState>   MultiSelectStorage;
 
     // Hover Delay system
@@ -2346,6 +2347,7 @@ struct ImGuiContext
         TablesTempDataStacked = 0;
         CurrentTabBar = NULL;
         CurrentMultiSelect = NULL;
+        MultiSelectTempDataStacked = 0;
 
         HoverItemDelayId = HoverItemDelayIdPreviousFrame = HoverItemUnlockedStationaryId = HoverWindowUnlockedStationaryId = 0;
         HoverItemDelayTimer = HoverItemDelayClearTimer = 0.0f;
