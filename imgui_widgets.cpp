@@ -39,7 +39,6 @@ Index of this file:
 #endif
 
 #include "imgui.h"
-#include "examples/example_win32_directx11/slgui.h"
 #ifndef IMGUI_DISABLE
 #include "imgui_internal.h"
 
