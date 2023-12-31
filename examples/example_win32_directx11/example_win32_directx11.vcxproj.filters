@@ -27,9 +27,6 @@
     <ClInclude Include="..\..\imgui_gradient.h">
       <Filter>imgui</Filter>
     </ClInclude>
-    <ClInclude Include="slgui.h">
-      <Filter>imgui</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\imgui.cpp">
@@ -57,9 +54,6 @@
       <Filter>imgui</Filter>
     </ClCompile>
     <ClCompile Include="..\..\imgui_gradient.cpp">
-      <Filter>imgui</Filter>
-    </ClCompile>
-    <ClCompile Include="slgui.cpp">
       <Filter>imgui</Filter>
     </ClCompile>
   </ItemGroup>

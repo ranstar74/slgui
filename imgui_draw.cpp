@@ -5058,6 +5058,21 @@ ImDrawFlags ImGui::CalcRoundingFlagsForRectInRect(const ImRect& r_in, const ImRe
         | ((round_b && round_l) ? ImDrawFlags_RoundCornersBottomLeft : 0) | ((round_b && round_r) ? ImDrawFlags_RoundCornersBottomRight : 0);
 }
 
+void ImGui::RenderGloss(const ImRect& bb, ImGuiCol col)
+{
+    // Extends half of the frame
+    ImVec2 glossMin = ImVec2(bb.Min.x, bb.Min.y);
+    ImVec2 glossMax = ImVec2(bb.Max.x, bb.Max.y - bb.GetHeight() * 0.5f);
+    RenderFrame(glossMin, glossMax, GetColorU32(col), false);
+}
+
+void ImGui::RenderShadow(const ImRect& bb)
+{
+    ImRect shadowBb = bb;
+    shadowBb.TranslateY(1);
+    RenderFrame(shadowBb.Min, shadowBb.Max, GetColorU32(ImGuiCol_Shadow), false);
+}
+
 // Helper for ColorPicker4()
 // NB: This is rather brittle and will show artifact when rounding this enabled if rounded corners overlap multiple cells. Caller currently responsible for avoiding that.
 // Spent a non reasonable amount of time trying to getting this right for ColorButton with rounding+anti-aliasing+ImGuiColorEditFlags_HalfAlphaPreview flag + various grid sizes and offsets, and eventually gave up... probably more reasonable to disable rounding altogether.
