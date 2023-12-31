@@ -39,6 +39,7 @@ Index of this file:
 #endif
 
 #include "imgui.h"
+#include "examples/example_win32_directx11/slgui.h"
 #ifndef IMGUI_DISABLE
 #include "imgui_internal.h"
 
@@ -705,14 +706,8 @@ bool ImGui::ButtonEx(const char* label, const ImVec2& size_arg, ImGuiButtonFlags
 
     // Render
     const ImU32 col = GetColorU32((held && hovered) ? ImGuiCol_ButtonActive : hovered ? ImGuiCol_ButtonHovered : ImGuiCol_Button);
-    const ImU32 borderCol = (held || hovered) ? GetColorU32(ImGuiCol_ButtonBorder) : 0;
     RenderNavHighlight(bb, id);
     RenderFrame(bb.Min, bb.Max, col, true, style.FrameRounding);
-    PushStyleColor(ImGuiCol_Border, borderCol);
-    PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1);
-    RenderFrameBorder(bb.Min, bb.Max, style.FrameRounding);
-    PopStyleVar();
-    PopStyleColor();
 
     if (g.LogEnabled)
         LogSetNextTextDecoration("[", "]");
@@ -3067,7 +3062,10 @@ bool ImGui::SliderScalar(const char* label, ImGuiDataType data_type, void* p_dat
 
     // Render grab
     if (grab_bb.Max.x > grab_bb.Min.x)
+    {
         window->DrawList->AddRectFilled(grab_bb.Min, grab_bb.Max, GetColorU32(g.ActiveId == id ? ImGuiCol_SliderGrabActive : ImGuiCol_SliderGrab), style.GrabRounding);
+        RenderGloss(grab_bb);
+    }
 
     // Display value using user-provided display format so user can add prefix/suffix/decorations to the value.
     char value_buf[64];

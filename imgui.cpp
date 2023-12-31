@@ -1211,7 +1211,7 @@ ImGuiStyle::ImGuiStyle()
     PopupBorderSize         = 1.0f;             // Thickness of border around popup or tooltip windows. Generally set to 0.0f or 1.0f. Other values not well tested.
     FramePadding            = ImVec2(4,3);      // Padding within a framed rectangle (used by most widgets)
     FrameRounding           = 0.0f;             // Radius of frame corners rounding. Set to 0.0f to have rectangular frames (used by most widgets).
-    FrameBorderSize         = 0.0f;             // Thickness of border around frames. Generally set to 0.0f or 1.0f. Other values not well tested.
+    FrameBorderSize         = 1.0f;             // Thickness of border around frames. Generally set to 0.0f or 1.0f. Other values not well tested.
     ItemSpacing             = ImVec2(8,4);      // Horizontal and vertical spacing between widgets/lines
     ItemInnerSpacing        = ImVec2(4,4);      // Horizontal and vertical spacing between within elements of a composed widget (e.g. a slider and its label)
     CellPadding             = ImVec2(4,2);      // Padding within a table cell. CellPadding.y may be altered between different rows.
@@ -3261,6 +3261,8 @@ const char* ImGui::GetStyleColorName(ImGuiCol idx)
     case ImGuiCol_Text: return "Text";
     case ImGuiCol_TextDisabled: return "TextDisabled";
     case ImGuiCol_Decoration: return "Decoration";
+    case ImGuiCol_Gloss: return "Gloss";
+    case ImGuiCol_Shadow: return "Shadow";
     case ImGuiCol_WindowBg: return "WindowBg";
     case ImGuiCol_ChildBg: return "ChildBg";
     case ImGuiCol_PopupBg: return "PopupBg";
@@ -3283,7 +3285,6 @@ const char* ImGui::GetStyleColorName(ImGuiCol idx)
     case ImGuiCol_Button: return "Button";
     case ImGuiCol_ButtonHovered: return "ButtonHovered";
     case ImGuiCol_ButtonActive: return "ButtonActive";
-    case ImGuiCol_ButtonBorder: return "ButtonBorder";
     case ImGuiCol_Header: return "Header";
     case ImGuiCol_HeaderHovered: return "HeaderHovered";
     case ImGuiCol_HeaderActive: return "HeaderActive";
@@ -6520,7 +6521,7 @@ void ImGui::RenderWindowDecorations(ImGuiWindow* window, const ImRect& title_bar
 
             // Visual Studio Like line
             ImU32 titleBarLineCol = GetColorU32(title_bar_is_highlight ? ImGuiCol_TitleBgActive : ImGuiCol_TitleBg);
-            ImVec2 titleBarLineMax(title_bar_rect.Max.x, title_bar_rect.Min.y + GetFontSize() * 0.3f);
+            ImVec2 titleBarLineMax(title_bar_rect.Max.x, title_bar_rect.Min.y + WindowGetTopLineHeight());
             ImVec2 pad(1, 1);
             window->DrawList->AddRectFilled(
                 title_bar_rect.Min + pad, titleBarLineMax - pad, titleBarLineCol, window_rounding, ImDrawFlags_RoundCornersTop);
@@ -6617,7 +6618,7 @@ void ImGui::RenderWindowTitleBarContents(ImGuiWindow* window, const ImRect& titl
     // FIXME: Would be nice to generalize the subtleties expressed here into reusable code.
     float pad_l = style.FramePadding.x;
     float pad_r = style.FramePadding.x;
-    float pad_t = (title_bar_rect.GetHeight() - GetFontSize() - style.FramePadding.y * 1.25f) * 0.5f; // Center vertically
+    float pad_t = WindowGetTopLineHeight() * 0.5f;
     float button_sz = g.FontSize;
     ImVec2 close_button_pos;
     ImVec2 collapse_button_pos;

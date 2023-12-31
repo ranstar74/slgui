@@ -1,10 +1,3 @@
-//
-// File: slgui.h
-//
-// Copyright (C) 2023 ranstar74. All rights violated.
-//
-// Part of "Rage Am" Research Project.
-//
 #pragma once
 
 #include "imgui.h"
@@ -21,6 +14,10 @@ inline ImGradient ImLerp(const ImGradient& a, const ImGradient& b, float t) { re
 namespace ImGui
 {
 	inline ImGradient ColorConvertU32ToGradient(ImU32 start, ImU32 end) { return { ColorConvertU32ToFloat4(start),ColorConvertU32ToFloat4(end) }; }
+    inline ImGradient GetColorGradient(ImGuiCol col0, ImGuiCol col1)
+	{
+        return ColorConvertU32ToGradient(GetColorU32(col0), GetColorU32(col1));
+	}
 
     void ShadeVerts(const ImDrawList* draw_list, int vert_start_idx, int vert_end_idx, ImVec2 gradient_p0, ImVec2 gradient_p1, ImU32 col0, ImU32 col1);
     void RenderFrameGradient(const ImRect& bb, ImU32 col0, ImU32 col1, ImGuiAxis axis = ImGuiAxis_Y, float bias = 1.0f, float offset = 0.0f);
