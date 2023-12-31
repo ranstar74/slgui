@@ -830,7 +830,7 @@ bool ImGui::CloseButton(ImGuiID id, const ImVec2& pos)
     ImU32 col = GetColorU32(held ? ImGuiCol_ButtonActive : ImGuiCol_ButtonHovered);
     ImVec2 center = bb.GetCenter();
     if (hovered)
-        window->DrawList->AddCircleFilled(center, ImMax(2.0f, g.FontSize * 0.5f + 1.0f), col);
+        window->DrawList->AddRectFilled(bb.Min, bb.Max, col);
 
     float cross_extent = g.FontSize * 0.5f * 0.7071f - 1.0f;
     ImU32 cross_col = GetColorU32(ImGuiCol_Text);
@@ -4086,6 +4086,15 @@ void ImGui::InputTextDeactivateHook(ImGuiID id)
     }
 }
 
+void DrawTextInputFrame(const ImGuiID id, const ImRect frame_bb)
+{
+    const ImGuiStyle& style = ImGui::GetStyle();
+    ImGuiWindow* draw_window = ImGui::GetCurrentWindow();
+    const ImU32 col = ImGui::GetColorU32(GImGui->ActiveId == id ? ImGuiCol_FrameBgActive : ImGuiCol_Border);
+    draw_window->DrawList->AddRect(frame_bb.Min, frame_bb.Max, col, style.FrameRounding);
+    ImGui::RenderNavHighlight(frame_bb, id);
+}
+
 // Edit a string of text
 // - buf_size account for the zero-terminator, so a buf_size of 6 can hold "Hello" but not "Hello!".
 //   This is so we can easily call InputText() on static arrays using ARRAYSIZE() and to match
@@ -4798,8 +4807,7 @@ bool ImGui::InputTextEx(const char* label, const char* hint, char* buf, int buf_
     // Render frame
     if (!is_multiline)
     {
-        RenderNavHighlight(frame_bb, id);
-        RenderFrame(frame_bb.Min, frame_bb.Max, GetColorU32(ImGuiCol_FrameBg), true, style.FrameRounding);
+        DrawTextInputFrame(id, frame_bb);
     }
 
     const ImVec4 clip_rect(frame_bb.Min.x, frame_bb.Min.y, frame_bb.Min.x + inner_size.x, frame_bb.Min.y + inner_size.y); // Not using frame_bb.Max because we have adjusted size

@@ -24,6 +24,9 @@
     <ClInclude Include="..\..\backends\imgui_impl_dx11.h">
       <Filter>sources</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\imgui_gradient.h">
+      <Filter>imgui</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\imgui.cpp">
@@ -48,6 +51,9 @@
       <Filter>sources</Filter>
     </ClCompile>
     <ClCompile Include="..\..\imgui_tables.cpp">
+      <Filter>imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\imgui_gradient.cpp">
       <Filter>imgui</Filter>
     </ClCompile>
   </ItemGroup>
