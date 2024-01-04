@@ -6688,7 +6688,7 @@ void ImGui::RenderWindowTitleBarContents(ImGuiWindow* window, const ImRect& titl
     }
     //if (g.IO.KeyShift) window->DrawList->AddRect(layout_r.Min, layout_r.Max, IM_COL32(255, 128, 0, 255)); // [DEBUG]
     //if (g.IO.KeyCtrl) window->DrawList->AddRect(clip_r.Min, clip_r.Max, IM_COL32(255, 128, 0, 255)); // [DEBUG]
-    bool focused = IsWindowFocused();
+    bool focused = IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
     if (!focused) PushStyleColor(ImGuiCol_Text, GetColorU32(ImGuiCol_Text, 0.75f));
     RenderTextClipped(layout_r.Min, layout_r.Max, name, NULL, &text_size, style.WindowTitleAlign, &clip_r);
     if (!focused) PopStyleColor();
